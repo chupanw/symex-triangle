@@ -1,0 +1,24 @@
+
+        if (LCR_or(LCR_or(ROR_less_equals(a, 0, _mut0, _mut1, _mut2, _mut3, _mut4), ROR_less_equals(b, 0, _mut5, _mut6, _mut7, _mut8, _mut9), _mut10), ROR_less_equals(c, 0, _mut11, _mut12, _mut13, _mut14, _mut15), _mut16))
+            return INVALID;
+        trian = 0;
+        if (ROR_equals(a, b, _mut17, _mut18, _mut19, _mut20, _mut21))
+            trian = AOR_plus(trian, 1, _mut22, _mut23, _mut24, _mut25);
+        if (ROR_equals(a, c, _mut26, _mut27, _mut28, _mut29, _mut30))
+            trian = AOR_plus(trian, 2, _mut31, _mut32, _mut33, _mut34);
+        if (ROR_equals(b, c, _mut35, _mut36, _mut37, _mut38, _mut39))
+            trian = AOR_plus(trian, 3, _mut40, _mut41, _mut42, _mut43);
+        if (ROR_equals(trian, 0, _mut44, _mut45, _mut46, _mut47, _mut48))
+            if (LCR_or(LCR_or(ROR_less(AOR_plus(a, b, _mut49, _mut50, _mut51, _mut52), c, _mut53, _mut54, _mut55, _mut56, _mut57), ROR_less(AOR_plus(a, c, _mut58, _mut59, _mut60, _mut61), b, _mut62, _mut63, _mut64, _mut65, _mut66), _mut67), ROR_less(AOR_plus(b, c, _mut68, _mut69, _mut70, _mut71), a, _mut72, _mut73, _mut74, _mut75, _mut76), _mut77))
+                return INVALID;
+            else
+                return SCALENE;
+        if (ROR_greater(trian, 3, _mut78, _mut79, _mut80, _mut81, _mut82))
+            return EQUILATERAL;
+        if (LCR_and(ROR_equals(trian, 1, _mut83, _mut84, _mut85, _mut86, _mut87), ROR_greater(AOR_plus(a, b, _mut88, _mut89, _mut90, _mut91), c, _mut92, _mut93, _mut94, _mut95, _mut96), _mut97))
+            return ISOSCELES;
+        else if (LCR_and(ROR_equals(trian, 2, _mut98, _mut99, _mut100, _mut101, _mut102), ROR_greater(AOR_plus(a, c, _mut103, _mut104, _mut105, _mut106), b, _mut107, _mut108, _mut109, _mut110, _mut111), _mut112))
+            return ISOSCELES;
+        else if (LCR_and(ROR_equals(trian, 3, _mut113, _mut114, _mut115, _mut116, _mut117), ROR_greater(AOR_plus(b, c, _mut118, _mut119, _mut120, _mut121), a, _mut122, _mut123, _mut124, _mut125, _mut126), _mut127))
+            return ISOSCELES;
+        return INVALID;

@@ -1,0 +1,50 @@
+    public static int AOR_plus(int left, int right, boolean... mutants) {
+
+        return (m3 ? (left % right) : (m2 ? (left / right) : (m1 ? (left * right) : (m0 ? (left - right) : (left + right)))));
+    }
+
+    public static int AOR_minus(int left, int right, boolean... mutants) {
+
+        return (m3 ? (left % right) : (m2 ? (left / right) : (m1 ? (left * right) : (m0 ? (left + right) : (left - right)))));
+    }
+
+    public static boolean ROR_equals(int left, int right, boolean... mutants) {
+
+        return (m4 ? (left <= right) : (m3 ? (left >= right) : (m2 ? (left < right) : (m1 ? (left > right) : (m0 ? (left != right) : (left == right))))));
+    }
+
+    public static boolean ROR_not_equals(int left, int right, boolean... mutants) {
+
+        return (m4 ? (left <= right) : (m3 ? (left >= right) : (m2 ? (left < right) : (m1 ? (left > right) : (m0 ? (left == right) : (left != right))))));
+    }
+
+    public static boolean ROR_greater(int left, int right, boolean... mutants) {
+
+        return (m4 ? (left <= right) : (m3 ? (left >= right) : (m2 ? (left < right) : (m1 ? (left == right) : (m0 ? (left != right) : (left > right))))));
+    }
+
+    public static boolean ROR_less(int left, int right, boolean... mutants) {
+
+        return (m4 ? (left <= right) : (m3 ? (left >= right) : (m2 ? (left == right) : (m1 ? (left > right) : (m0 ? (left != right) : (left < right))))));
+    }
+
+    public static boolean ROR_greater_equals(int left, int right, boolean... mutants) {
+
+        return (m4 ? (left <= right) : (m3 ? (left == right) : (m2 ? (left < right) : (m1 ? (left > right) : (m0 ? (left != right) : (left >= right))))));
+    }
+
+    public static boolean ROR_less_equals(int left, int right, boolean... mutants) {
+
+        return (m4 ? (left == right) : (m3 ? (left >= right) : (m2 ? (left < right) : (m1 ? (left > right) : (m0 ? (left != right) : (left <= right))))));
+    }
+
+
+    public static boolean LCR_or(boolean left, boolean right, boolean... mutants) {
+
+        return (m0 ? (left && right) : (left || right));
+    }
+
+    public static boolean LCR_and(boolean left, boolean right, boolean... mutants) {
+
+        return (m0 ? (left || right) : (left && right));
+    }
