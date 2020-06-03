@@ -1,6 +1,8 @@
 import java.io.FileReader
+import java.util
 
-import Main.substitute
+import SymEx.Z3Expr
+import com.microsoft.z3.{ArithExpr, BoolExpr, Context, IntExpr, IntNum, Model, Solver, Status}
 
 import scala.util.parsing.combinator.RegexParsers
 
@@ -67,55 +69,99 @@ case class ITE(i: Expr, t: Expr, e: Expr) extends Expr
 case class BOp(l: Expr, o: String, r: Expr) extends Expr
 
 
-sealed trait SymbolicExpr {
-  override def toString = pr(0)
-
-  def pr(indent: Int): String
-
-  def in(indent: Int): String = "    " * indent
-}
-
-case class SExpr(expr: String, arg: SymbolicExpr*) extends SymbolicExpr {
-  override def pr(indent: Int): String =
-    in(indent) + "-   " + expr + "\n" +
-      arg.map(_.pr(indent + 1)).mkString
-}
-
-case class Literal(s: String) extends SymbolicExpr {
-  override def pr(indent: Int): String = in(indent) + s + "\n"
-}
+//sealed trait SymbolicExpr {
+//  override def toString = pr(0)
+//
+//  def pr(indent: Int): String
+//
+//  def in(indent: Int): String = "    " * indent
+//}
+//
+//case class SExpr(expr: String, arg: SymbolicExpr*) extends SymbolicExpr {
+//  override def pr(indent: Int): String =
+//    in(indent) + "-   " + expr + "\n" +
+//      arg.map(_.pr(indent + 1)).mkString
+//}
+//
+//case class Literal(s: String) extends SymbolicExpr {
+//  override def pr(indent: Int): String = in(indent) + s + "\n"
+//}
 
 object SymEx {
-  val NONE = Literal("$NONE")
-  val TRUE = Literal("$TRUE")
+  type Z3Expr = com.microsoft.z3.Expr
+  val cfg = new util.HashMap[String, String]()
+  cfg.put("model", "true")
+  val ctx = new Context(cfg)
+  def getSolver: Solver = ctx.mkSolver()
+  val NONE: IntNum = ctx.mkInt(-1)
+  val TRUE: BoolExpr = ctx.mkTrue()
+  val FALSE: BoolExpr = ctx.mkFalse()
 
-  def updateCtx(ctx: Map[String, SymbolicExpr], n: String, v: SymbolicExpr, pc: SymbolicExpr): Map[String, SymbolicExpr] =
-    ctx + (n -> SExpr("ITE", pc, v, ctx.getOrElse(n, Literal("none"))))
-
-  def andNot(a: SymbolicExpr, b: SymbolicExpr) = SExpr("&&", a, SExpr("!", b))
-
-  def execute(p: List[Stmt], ctx: Map[String, SymbolicExpr], pc: SymbolicExpr): Map[String, SymbolicExpr] = p.headOption match {
-    case None => ctx
-    case Some(ReturnStmt(e)) => updateCtx(ctx, "$result", eval(e, ctx), pc)
-    case Some(Assign(l, r)) => execute(p.tail, updateCtx(ctx, l, eval(r, ctx), pc), pc)
-    case Some(IfStmt(c, t, e)) =>
-      val cv = eval(c, ctx)
-      val leftCtx = execute(List(t), ctx, SExpr("&&", pc, cv))
-      val rightCtx = execute(e.toList, leftCtx, andNot(pc, cv))
-      execute(p.tail, rightCtx, pc)
+  def updateCtx(values: Map[String, Z3Expr], n: String, v: Z3Expr, pc: BoolExpr): Map[String, Z3Expr] = {
+    val ite = ctx.mkITE(pc, v, values.getOrElse(n, NONE))
+    values + (n -> ite)
   }
 
-  def eval(x: Expr, ctx: Map[String, SymbolicExpr]): SymbolicExpr = x match {
+  def andNot(a: BoolExpr, b: BoolExpr): BoolExpr = {
+    ctx.mkAnd(a, ctx.mkNot(b))
+  }
+
+  var globalPC: BoolExpr = ctx.mkTrue()
+  def reset(): Unit = globalPC = ctx.mkTrue()
+
+  def execute(p: List[Stmt], values: Map[String, Z3Expr], pc: BoolExpr): Map[String, Z3Expr] = p.headOption match {
+    case None => values
+    case Some(ReturnStmt(e)) =>
+      globalPC = andNot(globalPC, pc)
+      updateCtx(values, "$result", eval(e, values), pc)
+    case Some(Assign(l, r)) =>
+      execute(p.tail, updateCtx(values, l, eval(r, values), pc), pc)
+    case Some(IfStmt(c, t, e)) =>
+      val cv = eval(c, values)
+      val leftValues = execute(List(t), values, ctx.mkAnd(pc, globalPC, cv.asInstanceOf[BoolExpr]))
+      val rightValues = execute(e.toList, leftValues, andNot(ctx.mkAnd(pc, globalPC), cv.asInstanceOf[BoolExpr]))
+      execute(p.tail, rightValues, ctx.mkAnd(pc, globalPC))
+  }
+
+  def eval(x: Expr, values: Map[String, Z3Expr]): Z3Expr = x match {
     case Id(x) =>
-      if (x startsWith "_mut") Literal(x)
-      else ctx(x)
-    case Val(x) => Literal(x)
-    case Call(n, a) => SExpr("call", Literal(n), Literal(a.toString()))
-    case BOp(l, o, r) => SExpr(o, eval(l, ctx), eval(r, ctx))
+      if ((x startsWith "_mut") && !values.contains(x))
+        ctx.mkFalse()
+      else values(x)
+    case Val(x) => ctx.mkInt(x)
+    case Call(n, a) =>
+      throw new RuntimeException("Calls should be inlined already")
+    case BOp(l, o, r) =>
+      val ll = eval(l, values)
+      val rr = eval(r, values)
+      (ll, rr) match {
+        case (lll: IntExpr, rrr: IntExpr) =>
+          o match {
+            case ">" => ctx.mkGt(lll, rrr)
+            case ">=" => ctx.mkGe(lll, rrr)
+            case "<" => ctx.mkLt(lll, rrr)
+            case "<=" => ctx.mkLe(lll, rrr)
+            case "==" => ctx.mkEq(lll, rrr)
+            case "!=" => ctx.mkNot(ctx.mkEq(lll, rrr))
+            case "+" => ctx.mkAdd(lll, rrr)
+            case "%" => ctx.mkMod(lll, rrr)
+            case "-" => ctx.mkSub(lll, rrr)
+            case "*" => ctx.mkMul(lll, rrr)
+            case "/" => ctx.mkDiv(lll, rrr)
+            case _ => throw new RuntimeException("Please implement " + o)
+          }
+        case (lll: BoolExpr, rrr: BoolExpr) =>
+          o match {
+            case "||" => ctx.mkOr(lll, rrr)
+            case "&&" => ctx.mkAnd(lll, rrr)
+            case _ => throw new RuntimeException("Please implement " + o)
+          }
+      }
     case ITE(i, t, e) =>
-      val _i = eval(i, ctx)
-      if (_i == TRUE) eval(t, ctx)
-      else SExpr("?", _i, eval(t, ctx), eval(e, ctx))
+      val _i = eval(i, values).asInstanceOf[BoolExpr]
+      if (_i == TRUE) eval(t, values)
+      else if (_i == FALSE) eval(e, values)
+      else ctx.mkITE(_i, eval(t, values), eval(e, values))
   }
 
 }
@@ -198,13 +244,142 @@ object Main extends App {
     ast.map(inlineS)
   }
 
+  def genBaseMap(): Map[String, Z3Expr] = {
+    Map(
+      "INVALID" -> SymEx.ctx.mkInt(0),
+      "ISOSCELES" -> SymEx.ctx.mkInt(1),
+      "SCALENE" -> SymEx.ctx.mkInt(2),
+      "EQUILATERAL" -> SymEx.ctx.mkInt(3),
+      "a" -> SymEx.ctx.mkIntConst("a"),
+      "b" -> SymEx.ctx.mkIntConst("b"),
+      "c" -> SymEx.ctx.mkIntConst("c")
+    )
+  }
+
+  def genMutMap(enabled: String*): Map[String, Z3Expr] = {
+    enabled.map(x => x -> SymEx.ctx.mkTrue()).toMap
+  }
+
   val astInlined = inlineFun(ast.get, funs.get)
 
-  println(astInlined.map(Print.print).mkString("\n"))
+  var satCount = 0
 
-  println(SymEx.execute(astInlined,
-    Map("INVALID" -> Literal("0"), "ISOSCELES" -> Literal("1"), "SCALENE" -> Literal("2"), "EQUILATERAL" -> Literal("3"),
-      "a" -> Literal("α"), "b" -> Literal("β"), "c" -> Literal("γ")),
-    SymEx.TRUE))
+  def testSSHOM(enabled: String*): Unit = {
+    val solver = SymEx.getSolver
+    val baseMap = genBaseMap()
 
+    SymEx.reset()
+    val baselineValues = SymEx.execute(astInlined, baseMap, SymEx.TRUE)
+    val baselineResult = baselineValues("$result")
+
+    val fomResults = enabled.map(x => {
+      SymEx.reset()
+      val fomValues = SymEx.execute(astInlined, baseMap ++ genMutMap(x), SymEx.TRUE)
+      fomValues("$result")
+    })
+
+    val fomConstrains = fomResults.map(r => SymEx.ctx.mkEq(baselineResult, r))
+    solver.add(SymEx.ctx.mkOr(fomConstrains:_*))
+
+    SymEx.reset()
+    val homValues = SymEx.execute(astInlined, baseMap ++ genMutMap(enabled:_*), SymEx.TRUE)
+    val homResult = homValues("$result")
+
+    solver.add(SymEx.ctx.mkNot(SymEx.ctx.mkEq(baselineResult, homResult)))
+
+    var model: Model = null
+    if (solver.check() == Status.SATISFIABLE) {
+      model = solver.getModel
+      print(s"Solution for SSHOM $enabled: ")
+      print(s"a = ${model.evaluate(baselineValues("a"), false)}, ")
+      print(s"b = ${model.evaluate(baselineValues("b"), false)}, ")
+      println(s"c = ${model.evaluate(baselineValues("c"), false)}")
+      satCount += 1
+    } else {
+      println(s"SSHOM $enabled unsatisfiable")
+    }
+  }
+
+  def verifyVarexSSHOMs(): Unit = {
+    satCount = 0
+    val lines = io.Source.fromFile("sshom.txt").getLines()
+    lines foreach {l => {
+      val enabled = l.tail.init.split(",").map(_.trim)
+      testSSHOM(enabled:_*)
+    }}
+    println(satCount)
+  }
+
+  def bruteForceDegree(degree: Int): Unit = {
+    satCount = 0
+    val foms = (0 to 127).toList map {i => s"_mut$i"}
+    def gen(l: List[String], d: Int): List[List[String]] = {
+      if (d == l.size) {
+        List(l)
+      }
+      else if (d == 1) {
+        l.map(x => List(x))
+      }
+      else {
+        val head = l.head
+        val includeHead = gen(l.tail, d - 1).map(x => head :: x)
+        val excludeHead = gen(l.tail, d)
+        includeHead ::: excludeHead
+      }
+    }
+    val combinations = gen(foms, degree)
+    println(s"Trying ${combinations.size} combinations...")
+    combinations foreach {enabled => {
+      testSSHOM(enabled:_*)
+    }}
+    println(satCount)
+  }
+
+  //  verifyVarexSSHOMs()
+  bruteForceDegree(2)
+}
+
+object Motivation extends App {
+  val cfg = new util.HashMap[String, String]()
+  cfg.put("model", "true")
+  val ctx = new Context(cfg)
+  val solver: Solver = ctx.mkSolver()
+
+  val a = ctx.mkIntConst("a")
+  val b = ctx.mkIntConst("b")
+  // baseline
+  val aEqualOne = ctx.mkEq(a, ctx.mkInt(1))
+  val aLtb = ctx.mkLt(a, b)
+  val aGtb = ctx.mkGt(a, b)
+  val baseline = ctx.mkITE(aEqualOne, aLtb, aGtb)
+  println(s"baseline: $baseline")
+
+  val m1 = ctx.mkITE(ctx.mkNot(aEqualOne), aLtb, aGtb)
+  println(s"m1: $m1")
+
+  val m2 = ctx.mkITE(aEqualOne, ctx.mkGe(a, b), aGtb)
+  println(s"m2: $m2")
+
+  val m1_m2 = ctx.mkITE(ctx.mkNot(aEqualOne), ctx.mkGe(a, b), aGtb)
+  println(s"m1_m2: $m1_m2")
+
+  solver.add(ctx.mkNot(ctx.mkEq(m1_m2, baseline)))
+  solver.add(ctx.mkOr(ctx.mkEq(m1, baseline), ctx.mkEq(m2, baseline)))
+
+  var model: Model = null
+  if (solver.check() == Status.SATISFIABLE) {
+    model = solver.getModel
+    println(s"a = ${model.evaluate(a, false)}")
+    println(s"b = ${model.evaluate(b, false)}")
+  } else {
+    println("Unsatisfiable")
+  }
+}
+
+object CountDegree extends App {
+  val lines = io.Source.fromFile("sshom.txt").getLines().toList
+  val splitLines = lines.map(l => l.split(","))
+  2 to 10 foreach {i => {
+    println(s"Degree $i: ${splitLines.count(l => l.size == i)}")
+  }}
 }
