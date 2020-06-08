@@ -262,7 +262,43 @@ object Main extends App {
 
   val astInlined = inlineFun(ast.get, funs.get)
 
-  var satCount = 0
+  val solutions = new collection.mutable.ListBuffer[List[String]]()
+
+  def testStrictSSHOM(enabled: String*): Unit = {
+    val solver = SymEx.getSolver
+    val baseMap = genBaseMap()
+
+    SymEx.reset()
+    val baselineValues = SymEx.execute(astInlined, baseMap, SymEx.TRUE)
+    val baselineResult = baselineValues("$result")
+
+    val fomResults = enabled.map(x => {
+      SymEx.reset()
+      val fomValues = SymEx.execute(astInlined, baseMap ++ genMutMap(x), SymEx.TRUE)
+      fomValues("$result")
+    })
+
+    val fomConstrains = fomResults.map(r => SymEx.ctx.mkNot(SymEx.ctx.mkEq(baselineResult, r)))
+    solver.add(SymEx.ctx.mkAnd(fomConstrains:_*))
+
+    SymEx.reset()
+    val homValues = SymEx.execute(astInlined, baseMap ++ genMutMap(enabled:_*), SymEx.TRUE)
+    val homResult = homValues("$result")
+
+    solver.add(SymEx.ctx.mkEq(baselineResult, homResult))
+
+    var model: Model = null
+    if (solver.check() == Status.SATISFIABLE) {
+      model = solver.getModel
+      print(s"Solution for SSHOM $enabled: ")
+      print(s"a = ${model.evaluate(baselineValues("a"), false)}, ")
+      print(s"b = ${model.evaluate(baselineValues("b"), false)}, ")
+      println(s"c = ${model.evaluate(baselineValues("c"), false)}")
+      solutions.addOne(enabled.toList)
+    } else {
+      println(s"SSHOM $enabled unsatisfiable")
+    }
+  }
 
   def testSSHOM(enabled: String*): Unit = {
     val solver = SymEx.getSolver
@@ -294,24 +330,36 @@ object Main extends App {
       print(s"a = ${model.evaluate(baselineValues("a"), false)}, ")
       print(s"b = ${model.evaluate(baselineValues("b"), false)}, ")
       println(s"c = ${model.evaluate(baselineValues("c"), false)}")
-      satCount += 1
     } else {
       println(s"SSHOM $enabled unsatisfiable")
+      solutions.addOne(enabled.toList)
     }
   }
 
   def verifyVarexSSHOMs(): Unit = {
-    satCount = 0
+    solutions.clear()
     val lines = io.Source.fromFile("sshom.txt").getLines()
     lines foreach {l => {
       val enabled = l.tail.init.split(",").map(_.trim)
       testSSHOM(enabled:_*)
     }}
-    println(satCount)
+    println(solutions.map(_.mkString(", ")).mkString("\n"))
+    println(s"# Solutions: ${solutions.size}")
+  }
+
+  def verifyVarexStrictSSHOMs(): Unit = {
+    solutions.clear()
+    val lines = io.Source.fromFile("ideal-sshom-bf-2.txt").getLines()
+    lines foreach {l => {
+      val enabled = l.split(",").map(_.trim)
+      testStrictSSHOM(enabled:_*)
+    }}
+    println(solutions.map(_.mkString(", ")).mkString("\n"))
+    println(s"# Solutions: ${solutions.size}")
   }
 
   def bruteForceDegree(degree: Int): Unit = {
-    satCount = 0
+    solutions.clear()
     val foms = (0 to 127).toList map {i => s"_mut$i"}
     def gen(l: List[String], d: Int): List[List[String]] = {
       if (d == l.size) {
@@ -332,11 +380,13 @@ object Main extends App {
     combinations foreach {enabled => {
       testSSHOM(enabled:_*)
     }}
-    println(satCount)
+    println(solutions.map(_.mkString(", ")).mkString("\n"))
+    println(s"# Solutions: ${solutions.size}")
   }
 
-  //  verifyVarexSSHOMs()
-  bruteForceDegree(2)
+//    verifyVarexSSHOMs()
+  bruteForceDegree(3)
+//  verifyVarexStrictSSHOMs()
 }
 
 object Motivation extends App {
