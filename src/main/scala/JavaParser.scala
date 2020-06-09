@@ -262,9 +262,7 @@ object Main extends App {
 
   val astInlined = inlineFun(ast.get, funs.get)
 
-  val solutions = new collection.mutable.ListBuffer[List[String]]()
-
-  def testStrictSSHOM(enabled: String*): Unit = {
+  def testStrictSSHOM(enabled: List[String], solutions: collection.mutable.ListBuffer[List[String]]): Unit = {
     val solver = SymEx.getSolver
     val baseMap = genBaseMap()
 
@@ -300,7 +298,7 @@ object Main extends App {
     }
   }
 
-  def testSSHOM(enabled: String*): Unit = {
+  def testSSHOM(enabled: List[String], solutions: collection.mutable.ListBuffer[List[String]]): Unit = {
     val solver = SymEx.getSolver
     val baseMap = genBaseMap()
 
@@ -336,30 +334,51 @@ object Main extends App {
     }
   }
 
+  def testNonEquivalent(enabled: List[String], solutions: collection.mutable.ListBuffer[List[String]]): Unit = {
+    val solver = SymEx.getSolver
+    val baseMap = genBaseMap()
+
+    SymEx.reset()
+    val baselineValues = SymEx.execute(astInlined, baseMap, SymEx.TRUE)
+    val baselineResult = baselineValues("$result")
+
+    SymEx.reset()
+    val homValues = SymEx.execute(astInlined, baseMap ++ genMutMap(enabled:_*), SymEx.TRUE)
+    val homResult = homValues("$result")
+
+    solver.add(SymEx.ctx.mkNot(SymEx.ctx.mkEq(baselineResult, homResult)))
+
+    if (solver.check() == Status.SATISFIABLE) {
+      solutions.addOne(enabled)
+    }
+  }
+
   def verifyVarexSSHOMs(): Unit = {
-    solutions.clear()
+    val solutions = new collection.mutable.ListBuffer[List[String]]()
     val lines = io.Source.fromFile("sshom.txt").getLines()
     lines foreach {l => {
       val enabled = l.tail.init.split(",").map(_.trim)
-      testSSHOM(enabled:_*)
+      // these SSHOMs are guaranteed to be non-equivalent already
+      testSSHOM(enabled.toList, solutions)
     }}
     println(solutions.map(_.mkString(", ")).mkString("\n"))
     println(s"# Solutions: ${solutions.size}")
   }
 
   def verifyVarexStrictSSHOMs(): Unit = {
-    solutions.clear()
+    val solutions = new collection.mutable.ListBuffer[List[String]]()
     val lines = io.Source.fromFile("ideal-sshom-bf-2.txt").getLines()
     lines foreach {l => {
       val enabled = l.split(",").map(_.trim)
-      testStrictSSHOM(enabled:_*)
+      testStrictSSHOM(enabled.toList, solutions)
     }}
     println(solutions.map(_.mkString(", ")).mkString("\n"))
     println(s"# Solutions: ${solutions.size}")
   }
 
   def bruteForceDegree(degree: Int): Unit = {
-    solutions.clear()
+    val nonEquivalenceSolutions = new collection.mutable.ListBuffer[List[String]]()
+    val sshomSolutions = new collection.mutable.ListBuffer[List[String]]()
     val foms = (0 to 127).toList map {i => s"_mut$i"}
     def gen(l: List[String], d: Int): List[List[String]] = {
       if (d == l.size) {
@@ -375,17 +394,20 @@ object Main extends App {
         includeHead ::: excludeHead
       }
     }
-    val combinations = gen(foms, degree)
+    val groups = io.Source.fromFile("triangle-mutant-group.txt").getLines().toList.map(_.split(" ").map(_.trim).toSet)
+    val combinations = gen(foms, degree).filterNot(c => groups.exists(g => c.forall(m => g.contains(m))))
     println(s"Trying ${combinations.size} combinations...")
     combinations foreach {enabled => {
-      testSSHOM(enabled:_*)
+      testNonEquivalent(enabled, nonEquivalenceSolutions)
+      testSSHOM(enabled, sshomSolutions)
     }}
-    println(solutions.map(_.mkString(", ")).mkString("\n"))
-    println(s"# Solutions: ${solutions.size}")
+    val overallSolutions = nonEquivalenceSolutions intersect sshomSolutions
+    println(overallSolutions.map(_.mkString(", ")).mkString("\n"))
+    println(s"# Solutions: ${overallSolutions.size}")
   }
 
-//    verifyVarexSSHOMs()
-  bruteForceDegree(3)
+    verifyVarexSSHOMs()
+//  bruteForceDegree(2)
 //  verifyVarexStrictSSHOMs()
 }
 
@@ -432,4 +454,14 @@ object CountDegree extends App {
   2 to 10 foreach {i => {
     println(s"Degree $i: ${splitLines.count(l => l.size == i)}")
   }}
+}
+
+object Subsume extends App {
+  val varex = io.Source.fromFile("ideal-sshom.txt").getLines().toList.map(x => x.split(",").map(_.trim).toSet).filter(_.size == 3)
+  val bf3 = io.Source.fromFile("ideal-sshom-bf-3.txt").getLines().toList.map(x => x.split(",").map(_.trim).toSet).toSet
+  for (s <- varex) {
+    if (!bf3.contains(s)) {
+      println(s)
+    }
+  }
 }
