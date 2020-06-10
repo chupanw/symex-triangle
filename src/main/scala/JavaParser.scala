@@ -395,7 +395,7 @@ object Main extends App {
       }
     }
     val groups = io.Source.fromFile("triangle-mutant-group.txt").getLines().toList.map(_.split(" ").map(_.trim).toSet)
-    val combinations = gen(foms, degree).filterNot(c => groups.exists(g => c.forall(m => g.contains(m))))
+    val combinations = gen(foms, degree).filterNot(c => groups.exists(g => c.count(m => g.contains(m)) >= 2))
     println(s"Trying ${combinations.size} combinations...")
     combinations foreach {enabled => {
       testNonEquivalent(enabled, nonEquivalenceSolutions)
