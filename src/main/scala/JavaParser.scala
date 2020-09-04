@@ -68,25 +68,6 @@ case class ITE(i: Expr, t: Expr, e: Expr) extends Expr
 
 case class BOp(l: Expr, o: String, r: Expr) extends Expr
 
-
-//sealed trait SymbolicExpr {
-//  override def toString = pr(0)
-//
-//  def pr(indent: Int): String
-//
-//  def in(indent: Int): String = "    " * indent
-//}
-//
-//case class SExpr(expr: String, arg: SymbolicExpr*) extends SymbolicExpr {
-//  override def pr(indent: Int): String =
-//    in(indent) + "-   " + expr + "\n" +
-//      arg.map(_.pr(indent + 1)).mkString
-//}
-//
-//case class Literal(s: String) extends SymbolicExpr {
-//  override def pr(indent: Int): String = in(indent) + s + "\n"
-//}
-
 object SymEx {
   type Z3Expr = com.microsoft.z3.Expr
   val cfg = new util.HashMap[String, String]()
@@ -262,6 +243,11 @@ object Main extends App {
 
   val astInlined = inlineFun(ast.get, funs.get)
 
+  /**
+   * Verify whether an SSHOM is a strict-SSHOM. If a solution can be found, it is a strict-SSHOM.
+   * @param enabled constituent FOMs which together form a HOM
+   * @param solutions a set of strict-SSHOMs as result
+   */
   def testStrictSSHOM(enabled: List[String], solutions: collection.mutable.ListBuffer[List[String]]): Unit = {
     val solver = SymEx.getSolver
     val baseMap = genBaseMap()
@@ -298,6 +284,11 @@ object Main extends App {
     }
   }
 
+  /**
+   * Verify whether a HOM is an SSHOM. If a solution cannot be found, it is an SSHOM.
+   * @param enabled constituent FOMs which together form a HOM
+   * @param solutions a set of SSHOMs as result
+   */
   def testSSHOM(enabled: List[String], solutions: collection.mutable.ListBuffer[List[String]]): Unit = {
     val solver = SymEx.getSolver
     val baseMap = genBaseMap()
