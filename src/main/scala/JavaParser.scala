@@ -346,7 +346,7 @@ object Main extends App {
 
   def verifyVarexSSHOMs(): Unit = {
     val solutions = new collection.mutable.ListBuffer[List[String]]()
-    val lines = io.Source.fromFile("sshom.txt").getLines()
+    val lines = io.Source.fromFile("sshom-varex-unverified.txt").getLines()
     lines foreach {l => {
       val enabled = l.tail.init.split(",").map(_.trim)
       // these SSHOMs are guaranteed to be non-equivalent already
@@ -358,7 +358,7 @@ object Main extends App {
 
   def verifyVarexStrictSSHOMs(): Unit = {
     val solutions = new collection.mutable.ListBuffer[List[String]]()
-    val lines = io.Source.fromFile("ideal-sshom-bf-2.txt").getLines()
+    val lines = io.Source.fromFile("results/sshom-bf2.txt").getLines()
     lines foreach {l => {
       val enabled = l.split(",").map(_.trim)
       testStrictSSHOM(enabled.toList, solutions)
@@ -440,7 +440,7 @@ object Motivation extends App {
 }
 
 object CountDegree extends App {
-  val lines = io.Source.fromFile("sshom.txt").getLines().toList
+  val lines = io.Source.fromFile("sshom-varex-unverified.txt").getLines().toList
   val splitLines = lines.map(l => l.split(","))
   2 to 10 foreach {i => {
     println(s"Degree $i: ${splitLines.count(l => l.size == i)}")
@@ -448,8 +448,8 @@ object CountDegree extends App {
 }
 
 object Subsume extends App {
-  val varex = io.Source.fromFile("ideal-sshom.txt").getLines().toList.map(x => x.split(",").map(_.trim).toSet).filter(_.size == 3)
-  val bf3 = io.Source.fromFile("ideal-sshom-bf-3.txt").getLines().toList.map(x => x.split(",").map(_.trim).toSet).toSet
+  val varex = io.Source.fromFile("results/sshom-varex.txt").getLines().toList.map(x => x.split(",").map(_.trim).toSet).filter(_.size == 3)
+  val bf3 = io.Source.fromFile("results/sshom-bf3.txt").getLines().toList.map(x => x.split(",").map(_.trim).toSet).toSet
   for (s <- varex) {
     if (!bf3.contains(s)) {
       println(s)
